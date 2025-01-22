@@ -8,14 +8,14 @@
 # - Bitrise CLI guides: http://devcenter.bitrise.io/bitrise-cli/
 
 title: |-
-  Send Microsoft Teams message
+  Microsoft Teams Adaptive Card Integration
 summary: |
   Send Microsoft Teams message to a channel
 description: |
-  Send Microsoft Teams message to a channel
-website: https://github.com/maguhiro/bitrise-step-send-microsoft-teams-message
-source_code_url: https://github.com/maguhiro/bitrise-step-send-microsoft-teams-message
-support_url: https://github.com/maguhiro/bitrise-step-send-microsoft-teams-message/issues
+  Send Microsoft Teams message as adaptive card
+website: https://github.com/HUK-COBURG/bitrise-step-microsoft-teams-adaptive-card
+source_code_url: https://github.com/HUK-COBURG/bitrise-step-microsoft-teams-adaptive-card
+support_url: https://github.com/HUK-COBURG/bitrise-step-microsoft-teams-adaptive-card/issues
 host_os_tags:
   - osx-10.10
   - ubuntu-16.04
@@ -28,7 +28,7 @@ is_skippable: true
 
 toolkit:
   go:
-    package_name: github.com/maguhiro/bitrise-step-send-microsoft-teams-message
+    package_name: github.com/HUK-COBURG/bitrise-step-microsoft-teams-adaptive-card
 
 
 inputs:
@@ -50,20 +50,44 @@ inputs:
       is_required: true
       is_sensitive: true
 # Message Main Inputs
-  - theme_color: "10c289"
+  - card_headline: "Success"
     opts:
-      title: "Message card theme color"
+      title: "Adaptive Card Header Container text"
       description: |
-        Specifies a custom brand color for the card. 
-        Can input any hex color code (eg. ff0000).
-
-        [documentation of MS Teams](https://docs.microsoft.com/en-us/outlook/actionable-messages/message-card-reference#card-fields).
-  - theme_color_on_error: "ff2158"
+        Text of the header container.
+  - card_headline_on_error: "Failed"
+    opts:
+      title: "Adaptive Card Header Container text"
+      description: |
+        Text of the header container.
+      category: If Build Failed
+  - card_style: "default"
+    opts:
+      title: "Adaptive Card Style"
+      description: |
+        Specifies the color of the header container. 
+        For preview see:
+        [documentation of Adaptive Cards](https://adaptivecards.io/designer/).
+      value_options:
+        - "default"
+        - "good"
+        - "attention"
+        - "warning"
+        - "accent"
+        - "emphasis"
+  - card_style_on_error: "attention"
     opts:
       title: "Message card theme color if the build failed"
       description: |
         **This option will be used if the build failed.**
       category: If Build Failed
+      value_options:
+        - "default"
+        - "good"
+        - "attention"
+        - "warning"
+        - "accent"
+        - "emphasis"
   - title: "Build Succeeded!"
     opts:
       title: "Message card title"

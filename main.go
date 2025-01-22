@@ -3,7 +3,7 @@ This file is:
 
 The MIT License (MIT)
 
-Copyright (c) 2014 Bitrise
+# Copyright (c) 2014 Bitrise
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,38 +29,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
 
+	"github.com/bitrise-io/go-steputils/stepconf"
 	"github.com/bitrise-io/go-utils/log"
-	"github.com/bitrise-tools/go-steputils/stepconf"
+
+	"github.com/atc0005/go-teams-notify/v2/adaptivecard"
 )
-
-// Config ...
-type Config struct {
-	// Settings
-	Debug      bool            `env:"is_debug_mode,opt[yes,no]"`
-	WebhookURL stepconf.Secret `env:"webhook_url"`
-	// Message Main
-	ThemeColor        string `env:"theme_color"`
-	ThemeColorOnError string `env:"theme_color_on_error"`
-	Title             string `env:"title"`
-	TitleOnError      string `env:"title_on_error"`
-	// Message Git
-	AuthorName string `env:"author_name"`
-	Subject    string `env:"subject"`
-	// Message Content
-	Fields         string `env:"fields"`
-	Images         string `env:"images"`
-	ImagesOnError  string `env:"images_on_error"`
-	Buttons        string `env:"buttons"`
-	ButtonsOnError string `env:"buttons_on_error"`
-}
-
-// success is true if the build is successful, false otherwise.
-var success = os.Getenv("BITRISE_BUILD_STATUS") == "0"
 
 // selectValue chooses the right value based on the result of the build.
 func selectValue(ifSuccess, ifFailed string) string {
@@ -70,32 +48,130 @@ func selectValue(ifSuccess, ifFailed string) string {
 	return ifFailed
 }
 
-// ensureNewlines replaces all \n substrings with newline characters.
-func ensureNewlines(s string) string {
-	return strings.Replace(s, "\\n", "\n", -1)
-}
+func NewCard(c Config) adaptivecard.Card {
 
-func newMessage(c Config) Message {
-	msg := Message{
-		Context:    "https://schema.org/extension",
-		Type:       "MessageCard",
-		ThemeColor: selectValue(c.ThemeColor, c.ThemeColorOnError),
-		Title:      selectValue(c.Title, c.TitleOnError),
-		Summary:    "Result of Bitrise",
-		Sections: []Section{{
-			ActivityTitle: c.AuthorName,
-			ActivityText:  ensureNewlines(c.Subject),
-			Facts:         parsesFacts(c.Fields),
-			Images:        parsesImages(selectValue(c.Images, c.ImagesOnError)),
-			Actions:       parsesActions(selectValue(c.Buttons, c.ButtonsOnError)),
-		}},
+	card := adaptivecard.NewCard()
+	card.Type = "AdaptiveCard"
+	card.Schema = "http://adaptivecards.io/schemas/adaptive-card.json"
+	card.Version = "1.5"
+
+	// Create style depending on build status
+	statusBanner := adaptivecard.NewContainer()
+	headline := adaptivecard.NewTextBlock("", false)
+	headline.Size = "large"
+	headline.Weight = "bolder"
+	headline.Style = "heading"
+	if success {
+		statusBanner.Style = c.CardStyle
+		headline.Color = c.CardStyle
+		headline.Text = c.CardHeadline
+	} else {
+		statusBanner.Style = c.CardStyleOnError
+		headline.Color = c.CardStyleOnError
+		headline.Text = c.CardHeadlineOnError
+	}
+	statusBanner.Spacing = "None"
+	statusBanner.Separator = true
+	statusBanner.Items = append(statusBanner.Items, headline)
+	card.Body = append(card.Body, adaptivecard.Element(statusBanner))
+
+	// Main Section
+	mainContainer := adaptivecard.NewContainer()
+	mainContainer.Style = "default"
+	mainContainer.Spacing = "medium"
+	if selectValue(c.Title, c.TitleOnError) != "" {
+		mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(selectValue(c.Title, c.TitleOnError), false))
 	}
 
-	return msg
+	if c.AuthorName != "" {
+		mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(c.AuthorName, false))
+	}
+
+	if c.Subject != "" {
+		mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(c.Subject, true))
+	}
+
+	factSet := adaptivecard.NewFactSet()
+	for _, fact := range parsesFacts(c.Fields) {
+		err := factSet.AddFact(fact)
+		if err != nil {
+			log.Errorf("Could not add fact to factset %v", err)
+		}
+	}
+	if len(factSet.Facts) > 0 {
+		mainContainer.Items = append(mainContainer.Items, adaptivecard.Element(factSet))
+	}
+
+	if len(mainContainer.Items) > 0 {
+		card.Body = append(card.Body, adaptivecard.Element(mainContainer))
+	}
+
+	// Images
+	imageContainer := parsesImages(selectValue(c.Images, c.ImagesOnError))
+
+	if len(imageContainer.Items) > 0 {
+		card.Body = append(card.Body, adaptivecard.Element(imageContainer))
+	}
+
+	// Actions
+	actions := parsesActions(selectValue(c.Buttons, c.ButtonsOnError))
+	if len(actions.Actions) > 0 {
+		card.Body = append(card.Body, actions)
+	}
+
+	return card
 }
 
-// postMessage sends a message.
-func postMessage(conf Config, msg Message) error {
+func parsesFacts(s string) (fs []adaptivecard.Fact) {
+	for _, p := range pairs(s) {
+		fs = append(fs, adaptivecard.Fact{Title: p[0], Value: p[1]})
+	}
+	return
+}
+
+func parsesImages(s string) (container adaptivecard.Container) {
+	container = adaptivecard.NewContainer()
+	for _, p := range pairs(s) {
+
+		image := adaptivecard.Element{
+			URL:  p[1],
+			Type: "Image",
+			Size: "large",
+		}
+
+		err := container.AddElement(false, image)
+		if err != nil {
+			log.Errorf("Could not add image %v", err)
+		}
+	}
+	return container
+}
+
+func parsesActions(s string) (as adaptivecard.Element) {
+	as = adaptivecard.NewActionSet()
+	for _, p := range pairs(s) {
+		action, _ := adaptivecard.NewActionOpenURL(p[1], p[0])
+		as.Actions = append(as.Actions, action)
+	}
+
+	return as
+}
+
+// pairs slices every lines in s into two substrings separated by the first pipe
+// character and returns a slice of those pairs.
+func pairs(s string) [][2]string {
+	var ps [][2]string
+	for _, line := range strings.Split(s, "\n") {
+		a := strings.SplitN(line, "|", 2)
+		if len(a) == 2 && a[0] != "" && a[1] != "" {
+			ps = append(ps, [2]string{a[0], a[1]})
+		}
+	}
+	return ps
+}
+
+// PostCard sends the given adaptive card to configured webhook
+func PostCard(conf Config, msg adaptivecard.Card) error {
 	b, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -118,7 +194,7 @@ func postMessage(conf Config, msg Message) error {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("server error: %s, failed to read response: %s", resp.Status, err)
 		}
@@ -137,8 +213,8 @@ func main() {
 	stepconf.Print(conf)
 	log.SetEnableDebugLog(conf.Debug)
 
-	msg := newMessage(conf)
-	if err := postMessage(conf, msg); err != nil {
+	msg := NewCard(conf)
+	if err := PostCard(conf, msg); err != nil {
 		log.Errorf("Error: %s", err)
 		os.Exit(1)
 	}

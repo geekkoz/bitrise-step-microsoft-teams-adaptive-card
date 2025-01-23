@@ -61,7 +61,7 @@ inputs:
       description: |
         Text of the header container.
       category: If Build Failed
-  - card_style: "default"
+  - card_style: "good"
     opts:
       title: "Adaptive Card Style"
       description: |

@@ -193,7 +193,7 @@ func PostCard(conf Config, msg adaptivecard.Card) error {
 		}
 	}()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusAccepted {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("server error: %s, failed to read response: %s", resp.Status, err)

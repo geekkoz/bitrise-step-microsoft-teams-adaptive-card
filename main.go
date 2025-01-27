@@ -63,11 +63,9 @@ func NewCard(c Config) adaptivecard.Card {
 	headline.Style = "heading"
 	if success {
 		statusBanner.Style = c.CardStyle
-		headline.Color = c.CardStyle
 		headline.Text = c.CardHeadline
 	} else {
 		statusBanner.Style = c.CardStyleOnError
-		headline.Color = c.CardStyleOnError
 		headline.Text = c.CardHeadlineOnError
 	}
 	statusBanner.Spacing = "None"

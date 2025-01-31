@@ -117,6 +117,8 @@ func NewCard(c Config) adaptivecard.Card {
 		card.Body = append(card.Body, actions)
 	}
 
+	card.MSTeams.Width = "Full"
+
 	return card
 }
 

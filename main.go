@@ -48,8 +48,17 @@ func selectValue(ifSuccess, ifFailed string) string {
 	return ifFailed
 }
 
-func NewCard(c Config) adaptivecard.Card {
+type TeamsMessage struct {
+	Type        string          `json:"type"`
+	Attachments []Attachment    `json:"attachments"`
+}
 
+type Attachment struct {
+	ContentType string            `json:"contentType"`
+	Content     adaptivecard.Card `json:"content"`
+}
+
+func NewCard(c Config) TeamsMessage {
 	card := adaptivecard.NewCard()
 	card.Type = "AdaptiveCard"
 	card.Schema = "http://adaptivecards.io/schemas/adaptive-card.json"
@@ -78,7 +87,7 @@ func NewCard(c Config) adaptivecard.Card {
 	mainContainer.Style = "default"
 	mainContainer.Spacing = "medium"
 	if selectValue(c.Title, c.TitleOnError) != "" {
-		mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(selectValue(c.Title, c.TitleOnError), false))
+		mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(selectValue(c.Title, c.TitleOnError), true))
 	}
 
 	if c.AuthorName != "" {
@@ -106,7 +115,6 @@ func NewCard(c Config) adaptivecard.Card {
 
 	// Images
 	imageContainer := parsesImages(selectValue(c.Images, c.ImagesOnError))
-
 	if len(imageContainer.Items) > 0 {
 		card.Body = append(card.Body, adaptivecard.Element(imageContainer))
 	}
@@ -119,7 +127,16 @@ func NewCard(c Config) adaptivecard.Card {
 
 	card.MSTeams.Width = "Full"
 
-	return card
+	// Wrap the card inside a Teams message structure
+	return TeamsMessage{
+		Type: "message",
+		Attachments: []Attachment{
+			{
+				ContentType: "application/vnd.microsoft.card.adaptive",
+				Content:     card,
+			},
+		},
+	}
 }
 
 func parsesFacts(s string) (fs []adaptivecard.Fact) {
@@ -171,7 +188,7 @@ func pairs(s string) [][2]string {
 }
 
 // PostCard sends the given adaptive card to configured webhook
-func PostCard(conf Config, msg adaptivecard.Card) error {
+func PostCard(conf Config, msg TeamsMessage) error {
 	b, err := json.Marshal(msg)
 	if err != nil {
 		return err

@@ -40,14 +40,6 @@ import (
 	"github.com/atc0005/go-teams-notify/v2/adaptivecard"
 )
 
-// selectValue chooses the right value based on the result of the build.
-func selectValue(ifSuccess, ifFailed string) string {
-	if success || ifFailed == "" {
-		return ifSuccess
-	}
-	return ifFailed
-}
-
 type TeamsMessage struct {
 	Type        string          `json:"type"`
 	Attachments []Attachment    `json:"attachments"`
@@ -58,85 +50,106 @@ type Attachment struct {
 	Content     adaptivecard.Card `json:"content"`
 }
 
-func NewCard(c Config) TeamsMessage {
-	card := adaptivecard.NewCard()
-	card.Type = "AdaptiveCard"
-	card.Schema = "http://adaptivecards.io/schemas/adaptive-card.json"
-	card.Version = "1.5"
+// Determines if the pipeline build was successful
+func isPipelineSuccessful() bool {
+	status := os.Getenv("BITRISEIO_PIPELINE_BUILD_STATUS")
+	log.Debugf("Pipeline Success status: %s\n", status)
+	return status == "succeeded" || status == "succeeded_with_abort" || status == ""
+}
 
-	// Create style depending on build status
-	statusBanner := adaptivecard.NewContainer()
-	headline := adaptivecard.NewTextBlock("", false)
-	headline.Size = "large"
-	headline.Weight = "bolder"
-	headline.Style = "heading"
+// selectValue chooses the right value based on the result of the build.
+func selectValue(success bool, ifSuccess, ifFailed string) string {
 	if success {
-		statusBanner.Style = c.CardStyle
-		headline.Text = c.CardHeadline
-	} else {
-		statusBanner.Style = c.CardStyleOnError
-		headline.Text = c.CardHeadlineOnError
+		return ifSuccess
 	}
-	statusBanner.Spacing = "None"
-	statusBanner.Separator = true
-	statusBanner.Items = append(statusBanner.Items, headline)
-	card.Body = append(card.Body, adaptivecard.Element(statusBanner))
+	if ifFailed != "" {
+		return ifFailed
+	}
+	return ifSuccess
+}
 
-	// Main Section
-	mainContainer := adaptivecard.NewContainer()
-	mainContainer.Style = "default"
-	mainContainer.Spacing = "medium"
-	if selectValue(c.Title, c.TitleOnError) != "" {
-		mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(selectValue(c.Title, c.TitleOnError), true))
-	}
+func NewCard(c Config) TeamsMessage {
+	success := isPipelineSuccessful()
 
-	if c.AuthorName != "" {
-		mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(c.AuthorName, false))
-	}
+    log.Debugf("Success status: %s\n", success)
 
-	if c.Subject != "" {
-		mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(c.Subject, true))
-	}
+    card := adaptivecard.NewCard()
+    card.Type = "AdaptiveCard"
+    card.Schema = "http://adaptivecards.io/schemas/adaptive-card.json"
+    card.Version = "1.5"
 
-	factSet := adaptivecard.NewFactSet()
-	for _, fact := range parsesFacts(c.Fields) {
-		err := factSet.AddFact(fact)
-		if err != nil {
-			log.Errorf("Could not add fact to factset %v", err)
-		}
-	}
-	if len(factSet.Facts) > 0 {
-		mainContainer.Items = append(mainContainer.Items, adaptivecard.Element(factSet))
-	}
+    // Create style depending on build status
+    statusBanner := adaptivecard.NewContainer()
+    headline := adaptivecard.NewTextBlock("", false)
+    headline.Size = "large"
+    headline.Weight = "bolder"
+    headline.Style = "heading"
 
-	if len(mainContainer.Items) > 0 {
-		card.Body = append(card.Body, adaptivecard.Element(mainContainer))
-	}
+    statusBanner.Style = selectValue(success, c.CardStyle, c.CardStyleOnError)
+    headline.Text = selectValue(success, c.CardHeadline, c.CardHeadlineOnError)
 
-	// Images
-	imageContainer := parsesImages(selectValue(c.Images, c.ImagesOnError))
-	if len(imageContainer.Items) > 0 {
-		card.Body = append(card.Body, adaptivecard.Element(imageContainer))
-	}
+    statusBanner.Spacing = "None"
+    statusBanner.Separator = true
+    statusBanner.Items = append(statusBanner.Items, headline)
+    card.Body = append(card.Body, adaptivecard.Element(statusBanner))
 
-	// Actions
-	actions := parsesActions(selectValue(c.Buttons, c.ButtonsOnError))
-	if len(actions.Actions) > 0 {
-		card.Body = append(card.Body, actions)
-	}
+    // Main Section
+    mainContainer := adaptivecard.NewContainer()
+    mainContainer.Style = "default"
+    mainContainer.Spacing = "medium"
 
-	card.MSTeams.Width = "Full"
+    title := selectValue(success, c.Title, c.TitleOnError)
+    if title != "" {
+    	mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(title, true))
+    }
 
-	// Wrap the card inside a Teams message structure
-	return TeamsMessage{
-		Type: "message",
-		Attachments: []Attachment{
-			{
-				ContentType: "application/vnd.microsoft.card.adaptive",
-				Content:     card,
-			},
-		},
-	}
+    if c.AuthorName != "" {
+    	mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(c.AuthorName, false))
+    }
+
+    if c.Subject != "" {
+    	mainContainer.Items = append(mainContainer.Items, adaptivecard.NewTextBlock(c.Subject, true))
+    }
+
+    // Facts
+    factSet := adaptivecard.NewFactSet()
+    for _, fact := range parsesFacts(c.Fields) {
+    	err := factSet.AddFact(fact)
+    	if err != nil {
+    		log.Errorf("Could not add fact to factset %v", err)
+    	}
+    }
+    if len(factSet.Facts) > 0 {
+    	mainContainer.Items = append(mainContainer.Items, adaptivecard.Element(factSet))
+    }
+
+    if len(mainContainer.Items) > 0 {
+    	card.Body = append(card.Body, adaptivecard.Element(mainContainer))
+    }
+
+    // Images
+    imageContainer := parsesImages(selectValue(success, c.Images, c.ImagesOnError))
+    if len(imageContainer.Items) > 0 {
+    	card.Body = append(card.Body, adaptivecard.Element(imageContainer))
+    }
+
+    // Actions (Buttons)
+    actions := parsesActions(selectValue(success, c.Buttons, c.ButtonsOnError))
+    if len(actions.Actions) > 0 {
+    	card.Body = append(card.Body, actions)
+    }
+
+    card.MSTeams.Width = "Full"
+
+    return TeamsMessage{
+    	Type: "message",
+    	Attachments: []Attachment{
+    		{
+    			ContentType: "application/vnd.microsoft.card.adaptive",
+    			Content:     card,
+    		},
+        },
+    }
 }
 
 func parsesFacts(s string) (fs []adaptivecard.Fact) {

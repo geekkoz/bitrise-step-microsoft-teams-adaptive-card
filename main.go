@@ -57,6 +57,13 @@ func isPipelineSuccessful() bool {
 	return status == "succeeded" || status == "succeeded_with_abort" || status == ""
 }
 
+// Determines if the pipeline build was successful
+func isWorkflowSuccessful() bool {
+	status := os.Getenv("BITRISE_BUILD_STATUS")
+	log.Debugf("Workflow Success status: %s\n", status)
+	return status == "0"
+}
+
 // selectValue chooses the right value based on the result of the build.
 func selectValue(success bool, ifSuccess, ifFailed string) string {
 	if success {
@@ -69,7 +76,7 @@ func selectValue(success bool, ifSuccess, ifFailed string) string {
 }
 
 func NewCard(c Config) TeamsMessage {
-	success := isPipelineSuccessful()
+    success := isPipelineSuccessful() && isWorkflowSuccessful()
 
     log.Debugf("Success status: %s\n", success)
 
